@@ -1,9 +1,18 @@
 <template>
-  <h1>{{ emailSelection.emails.size }}</h1>
+  <button @click="changeScreen('inbox')" :disabled="selectedScreen === 'inbox'">
+    Inbox
+  </button>
+  <button
+    @click="changeScreen('archive')"
+    :disabled="selectedScreen === 'archive'"
+  >
+    Archive
+  </button>
+  <bulk-action-bar :emails="filteredEmails" />
   <table class="mail-table">
     <tbody>
       <tr
-        v-for="email in unarchivedEmails"
+        v-for="email in filteredEmails"
         :key="email.id"
         :class="['clickable', email.read ? 'read' : '']"
       >
@@ -11,7 +20,7 @@
           <input
             type="checkbox"
             @click="emailSelection.toggle(email)"
-            :selected="emailSelection.emails.has(email)"
+            :checked="emailSelection.emails.has(email)"
           />
         </td>
         <td @click="openMail(email)">{{ email.from }}</td>
@@ -39,27 +48,20 @@ import { format } from "date-fns";
 import axios from "axios";
 import MailView from "./MailView.vue";
 import ModalView from "./ModalView.vue";
-import { reactive } from "@vue/reactivity";
+import useEmailSelection from "../composables/useEmailSelection";
+import BulkActionBar from "./BulkActionBar.vue";
+import { ref } from "@vue/reactivity";
+
 export default {
-  components: { MailView, ModalView },
+  components: { MailView, ModalView, BulkActionBar },
   async setup() {
-    let selected = reactive(new Set());
-    const emailSelection = {
-      emails: selected,
-      toggle(email) {
-        if (selected.has(email)) {
-          selected.delete(email);
-        } else {
-          selected.add(email);
-        }
-      },
-    };
     const { data: emails } = await axios(`http://localhost:3000/emails`);
     return {
       format,
-      emails,
-      openedMail: null,
-      emailSelection,
+      emails: ref(emails),
+      openedMail: ref(null),
+      emailSelection: useEmailSelection(),
+      selectedScreen: ref("inbox"),
     };
   },
   computed: {
@@ -68,11 +70,19 @@ export default {
         return e1.sentAt < e2.sentAt ? 1 : -1;
       });
     },
-    unarchivedEmails() {
-      return this.sortedEmail.filter((e) => e.archived != true);
+    filteredEmails() {
+      if (this.selectedScreen === "inbox") {
+        return this.sortedEmail.filter((e) => e.archived !== true);
+      } else {
+        return this.sortedEmail.filter((e) => e.archived === true);
+      }
     },
   },
   methods: {
+    changeScreen(screen) {
+      this.selectedScreen = screen;
+      this.emailSelection.removeAll();
+    },
     openMail(email) {
       this.openedMail = email;
       if (email) {
@@ -102,7 +112,7 @@ export default {
         this.openedMail = null;
       }
       if (changeIndex) {
-        const emails = this.unarchivedEmails;
+        const emails = this.filteredEmails;
         const currentIndex = emails.indexOf(this.openedMail);
         const newEmail = emails[currentIndex + changeIndex];
         this.openMail(newEmail);
